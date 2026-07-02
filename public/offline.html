@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#720ED9" />
+    <title>Aufi Offline</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(114, 14, 217, 0.35), transparent 24%),
+          linear-gradient(180deg, #0b0615 0%, #05030b 50%, #020202 100%);
+        color: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      main {
+        width: min(100%, 28rem);
+        padding: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 1.75rem;
+        background: rgba(8, 8, 14, 0.78);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+      }
+
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: clamp(1.75rem, 4vw, 2.25rem);
+      }
+
+      p {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.74);
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Aufi is offline</h1>
+      <p>
+        Your last loaded interface is still available, but live voice calls need an
+        internet connection. Reconnect to continue speaking with Aufi.
+      </p>
+    </main>
+  </body>
+  </html>

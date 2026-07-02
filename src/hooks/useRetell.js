@@ -28,6 +28,14 @@ const initialMicModalState = {
   mode: "required",
 };
 
+function isSecureRuntime() {
+  if (window.isSecureContext) {
+    return true;
+  }
+
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
 function formatErrorMessage(error) {
   const message = error?.message || "Unknown error";
 
@@ -150,6 +158,7 @@ export function useRetell() {
   const muteSyncInFlightRef = useRef(false);
   const speakerDesiredRef = useRef(initialState.speakerOn);
   const speakerSyncInFlightRef = useRef(false);
+  const knownAudioDevicesRef = useRef([]);
 
   const setMicrophonePermission = useCallback((permission) => {
     microphonePermissionRef.current = permission;
@@ -362,6 +371,7 @@ export function useRetell() {
   const logAudioRoutingSupport = useCallback(async () => {
     try {
       const support = await retellService.getAudioRoutingSupport();
+      knownAudioDevicesRef.current = support.devices.map((device) => device.label || device.deviceId);
       console.log("Browser audio routing support", {
         supported: support.supported,
         canEnumerateDevices: support.canEnumerateDevices,
@@ -426,11 +436,34 @@ export function useRetell() {
     }
   }, [showError]);
 
+  const restoreAudioSession = useCallback(async (reason = "unknown") => {
+    if (!retellService.getRoom()) {
+      return;
+    }
+
+    try {
+      const result = await retellService.resumeAudioPlayback();
+      console.log("Audio session restored");
+      console.log("Audio session state", {
+        reason,
+        ...result,
+      });
+
+      if (muteDesiredRef.current !== isMuted) {
+        void syncMuteState();
+      }
+    } catch (error) {
+      console.error("Audio session restore failed", error);
+    }
+  }, [isMuted, syncMuteState]);
+
   useEffect(() => {
     const unsubs = [
       retellService.on("call_started", () => {
         console.log("CALL_STARTED");
         console.log("Call connected");
+        console.log("Audio session started");
+        console.log("Audio session state", retellService.getAudioSessionState());
         setState((current) => ({
           ...current,
           connected: true,
@@ -517,6 +550,7 @@ export function useRetell() {
     logAudioRoutingSupport,
     logMicrophoneState,
     resetCallVisualState,
+    restoreAudioSession,
     setError,
     startTimer,
     stopMicMonitor,
@@ -534,6 +568,7 @@ export function useRetell() {
       });
 
       console.log("MIC_PERMISSION_STATE", permissionStatus.state);
+      console.log("Microphone permission state", permissionStatus.state);
       return permissionStatus.state;
     } catch (error) {
       console.log("MIC_PERMISSION_QUERY_FAILED", error);
@@ -548,6 +583,7 @@ export function useRetell() {
     }
 
     try {
+      console.log("Microphone permission requested");
       console.log("MIC_PERMISSION_REQUEST_START");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       console.log("MIC_PERMISSION_REQUEST_GRANTED");
@@ -601,6 +637,15 @@ export function useRetell() {
   }, [getMicrophonePermissionState, requestMicrophoneAccess, setMicModal, setMicrophonePermission]);
 
   const startConversation = useCallback(async () => {
+    if (!isSecureRuntime()) {
+      setError(
+        new Error(
+          "Microphone and secure WebRTC require HTTPS. Open Aufi over HTTPS or localhost to start a call."
+        )
+      );
+      return;
+    }
+
     manualHangupRef.current = false;
     speakerDesiredRef.current = true;
     muteDesiredRef.current = false;
@@ -700,6 +745,72 @@ export function useRetell() {
       status: current.connected ? current.status : "Idle",
     }));
   }, []);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void restoreAudioSession("visibilitychange");
+      }
+    };
+
+    const onPageShow = () => {
+      void restoreAudioSession("pageshow");
+    };
+
+    const onFocus = () => {
+      void restoreAudioSession("focus");
+    };
+
+    const onDeviceChange = async () => {
+      try {
+        const support = await retellService.getAudioRoutingSupport();
+        const nextDevices = support.devices.map((device) => device.label || device.deviceId);
+        const previousDevices = knownAudioDevicesRef.current;
+
+        const addedDevices = nextDevices.filter((label) => !previousDevices.includes(label));
+
+        addedDevices.forEach((label) => {
+          const normalized = label.toLowerCase();
+
+          if (normalized.includes("bluetooth")) {
+            console.log("Bluetooth connected");
+          }
+
+          if (
+            normalized.includes("headset") ||
+            normalized.includes("headphone") ||
+            normalized.includes("earbud") ||
+            normalized.includes("wired")
+          ) {
+            console.log("Headset connected");
+          }
+        });
+
+        if (previousDevices.join("|") !== nextDevices.join("|")) {
+          console.log("Speaker changed");
+          console.log("Audio session state", {
+            outputDevices: nextDevices,
+          });
+        }
+
+        knownAudioDevicesRef.current = nextDevices;
+      } catch (error) {
+        console.error("Audio device change handling failed", error);
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
+    navigator.mediaDevices?.addEventListener?.("devicechange", onDeviceChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
+      navigator.mediaDevices?.removeEventListener?.("devicechange", onDeviceChange);
+    };
+  }, [restoreAudioSession]);
 
   const controls = useMemo(
     () => ({

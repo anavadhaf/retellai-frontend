@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   FiAlertCircle,
+  FiDownload,
   FiMicOff,
   FiPhoneCall,
   FiPhoneOff,
   FiRadio,
+  FiRefreshCw,
   FiSliders,
   FiVolume2,
   FiVolumeX,
@@ -13,6 +15,7 @@ import {
 } from "react-icons/fi";
 import VoiceOrb from "../components/VoiceOrb";
 import { useRetell } from "../hooks/useRetell";
+import { usePwa } from "../hooks/usePwa";
 
 const particles = Array.from({ length: 18 }, (_, index) => ({
   id: index,
@@ -24,7 +27,7 @@ const particles = Array.from({ length: 18 }, (_, index) => ({
   driftY: index % 3 === 0 ? -12 : 10,
 }));
 
-function FloatingParticles({ interactive = false, mouse }) {
+function FloatingParticles({ interactive = false, mouse, paused = false }) {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {particles.map((particle) => {
@@ -42,15 +45,24 @@ function FloatingParticles({ interactive = false, mouse }) {
         return (
           <motion.span
             key={particle.id}
-            animate={{
-              x: [offsetX, particle.driftX + offsetX, offsetX],
-              y: [offsetY, particle.driftY + offsetY, offsetY],
-              opacity: [0.16, 0.72, 0.16],
-              scale: [1, 1.16, 1],
-            }}
+            animate={
+              paused
+                ? {
+                    x: offsetX,
+                    y: offsetY,
+                    opacity: 0.2,
+                    scale: 1,
+                  }
+                : {
+                    x: [offsetX, particle.driftX + offsetX, offsetX],
+                    y: [offsetY, particle.driftY + offsetY, offsetY],
+                    opacity: [0.16, 0.72, 0.16],
+                    scale: [1, 1.16, 1],
+                  }
+            }
             transition={{
               duration: 7 + (particle.id % 4) * 1.4,
-              repeat: Number.POSITIVE_INFINITY,
+              repeat: paused ? 0 : Number.POSITIVE_INFINITY,
               ease: "easeInOut",
             }}
             style={{
@@ -69,7 +81,7 @@ function FloatingParticles({ interactive = false, mouse }) {
   );
 }
 
-function WaveField() {
+function WaveField({ paused = false }) {
   const wavePaths = [
     "M-40 170 C 80 120, 160 220, 280 170 S 480 110, 620 170 S 860 240, 1040 170 S 1280 100, 1480 170 S 1700 240, 1880 170",
     "M-30 205 C 90 160, 200 255, 340 205 S 560 145, 720 205 S 980 275, 1160 205 S 1420 135, 1640 205 S 1840 255, 1980 205",
@@ -82,8 +94,12 @@ function WaveField() {
       <motion.svg
         viewBox="0 0 1600 360"
         preserveAspectRatio="none"
-        animate={{ x: ["0%", "-8%", "0%"] }}
-        transition={{ duration: 18, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
+        animate={paused ? { x: "0%" } : { x: ["0%", "-8%", "0%"] }}
+        transition={{
+          duration: 18,
+          repeat: paused ? 0 : Number.POSITIVE_INFINITY,
+          ease: "easeInOut",
+        }}
         className="absolute inset-x-[-8%] bottom-[-2%] h-full w-[116%] opacity-95"
       >
         <defs>
@@ -109,13 +125,20 @@ function WaveField() {
             strokeWidth={index === 1 ? 1.6 : 1}
             filter="url(#wave-blur)"
             initial={false}
-            animate={{
-              translateY: [0, index % 2 === 0 ? -10 : 8, 0],
-              opacity: [0.35, 0.9, 0.35],
-            }}
+            animate={
+              paused
+                ? {
+                    translateY: 0,
+                    opacity: 0.45,
+                  }
+                : {
+                    translateY: [0, index % 2 === 0 ? -10 : 8, 0],
+                    opacity: [0.35, 0.9, 0.35],
+                  }
+            }
             transition={{
               duration: 7 + index * 1.6,
-              repeat: Number.POSITIVE_INFINITY,
+              repeat: paused ? 0 : Number.POSITIVE_INFINITY,
               ease: "easeInOut",
             }}
           />
@@ -179,7 +202,7 @@ function ControlButton({
 
 function Home() {
   const state = useRetell();
-  const [speakerVisualOn, setSpeakerVisualOn] = useState(true);
+  const pwa = usePwa();
   const [mouse, setMouse] = useState({ x: -9999, y: -9999 });
 
   const isCallActive = state.connected || state.connecting;
@@ -251,6 +274,7 @@ function Home() {
   return (
     <main
       className="app-shell relative min-h-screen overflow-hidden bg-[#050505] px-4 py-4 text-white sm:px-6 lg:px-8"
+      data-app-hidden={pwa.animationsPaused}
       onMouseMove={(event) => {
         if (isCallActive) {
           return;
@@ -275,10 +299,30 @@ function Home() {
           opacity: isCallActive ? 0 : mouse.x < 0 ? 0 : 1,
         }}
       />
-      <FloatingParticles interactive={!isCallActive} mouse={mouse} />
-      <WaveField />
+      <FloatingParticles interactive={!isCallActive} mouse={mouse} paused={pwa.animationsPaused} />
+      <WaveField paused={pwa.animationsPaused} />
 
       <div className="relative z-10 mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-7xl flex-col">
+        <div className="pointer-events-none fixed inset-x-4 top-4 z-30 mx-auto flex max-w-xl justify-center">
+          <div className="pointer-events-auto flex w-full flex-col gap-3">
+            {pwa.updateAvailable ? (
+              <button
+                type="button"
+                onClick={pwa.applyUpdate}
+                className="inline-flex items-center justify-center gap-2 self-center rounded-full border border-white/10 bg-[rgba(12,12,16,0.82)] px-4 py-3 text-sm font-medium text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl"
+              >
+                <FiRefreshCw />
+                Update Aufi
+              </button>
+            ) : null}
+            {!pwa.isOnline ? (
+              <div className="self-center rounded-full border border-white/10 bg-[rgba(12,12,16,0.82)] px-4 py-2 text-xs font-medium uppercase tracking-[0.24em] text-white/70 backdrop-blur-xl">
+                Offline Mode
+              </div>
+            ) : null}
+          </div>
+        </div>
+
         <AnimatePresence mode="wait">
           {isCallActive ? (
             <motion.section
@@ -308,6 +352,7 @@ function Home() {
                     connecting={state.connecting}
                     agentSpeaking={state.agentSpeaking}
                     userSpeaking={state.userSpeaking}
+                    animationsPaused={pwa.animationsPaused}
                   />
 
                   <motion.p
@@ -349,11 +394,11 @@ function Home() {
                     onClick={state.controls.toggleMute}
                   />
                   <ControlButton
-                    label={speakerVisualOn ? "Speaker on" : "Speaker off"}
-                    icon={speakerVisualOn ? <FiVolume2 /> : <FiVolumeX />}
-                    active={speakerVisualOn}
+                    label={state.speakerOn ? "Speaker on" : "Speaker off"}
+                    icon={state.speakerOn ? <FiVolume2 /> : <FiVolumeX />}
+                    active={state.speakerOn}
                     disabled={!state.connected}
-                    onClick={() => setSpeakerVisualOn((current) => !current)}
+                    onClick={state.controls.toggleSpeaker}
                   />
                   <ControlButton
                     label="Settings"
@@ -423,8 +468,30 @@ function Home() {
                     connecting={false}
                     agentSpeaking={false}
                     userSpeaking={false}
+                    animationsPaused={pwa.animationsPaused}
                   />
                 </div>
+
+                {pwa.installSupported || pwa.isStandalone || pwa.offlineReady ? (
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                    {pwa.installSupported ? (
+                      <button
+                        type="button"
+                        onClick={pwa.promptInstall}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-medium text-white/82 transition hover:bg-white/[0.08]"
+                      >
+                        <FiDownload />
+                        Install Aufi
+                      </button>
+                    ) : null}
+                    {pwa.isStandalone ? (
+                      <StatusChip label="Installed PWA" />
+                    ) : null}
+                    {pwa.offlineReady ? (
+                      <StatusChip label="Offline Ready" />
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </motion.section>
           )}

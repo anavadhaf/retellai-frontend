@@ -19,6 +19,28 @@ class RetellService {
     await client.startAudioPlayback();
   }
 
+  async resumeAudioPlayback() {
+    const room = this.getRoom();
+
+    if (room?.audioContext?.state === "suspended") {
+      await room.audioContext.resume();
+    }
+
+    await this.client?.startAudioPlayback?.();
+
+    return {
+      audioContextState: room?.audioContext?.state ?? "unknown",
+    };
+  }
+
+  getAudioSessionState() {
+    return {
+      hasClient: Boolean(this.client),
+      hasRoom: Boolean(this.getRoom()),
+      audioContextState: this.getRoom()?.audioContext?.state ?? "unknown",
+    };
+  }
+
   getRoom() {
     return this.client?.room;
   }
