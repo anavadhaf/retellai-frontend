@@ -1,0 +1,90 @@
+@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #ffffff;
+  background: #050505;
+  font-family: "Figtree", system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(114, 14, 217, 0.2), transparent 22%),
+    radial-gradient(circle at 80% 16%, rgba(228, 175, 255, 0.1), transparent 20%),
+    linear-gradient(180deg, #060606 0%, #040406 42%, #020202 100%);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.app-shell::before,
+.app-shell::after {
+  content: "";
+  position: absolute;
+  width: 30rem;
+  height: 30rem;
+  border-radius: 9999px;
+  filter: blur(100px);
+  opacity: 0.34;
+  pointer-events: none;
+}
+
+.app-shell::before {
+  top: -3rem;
+  left: -8rem;
+  background: rgba(114, 14, 217, 0.14);
+  animation: drift 20s ease-in-out infinite alternate;
+}
+
+.app-shell::after {
+  right: -10rem;
+  bottom: -4rem;
+  background: rgba(228, 175, 255, 0.1);
+  animation: drift 22s ease-in-out infinite alternate-reverse;
+}
+
+.font-display {
+  font-family: "Outfit", system-ui, sans-serif;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(-1%, 0%, 0) scale(1);
+  }
+
+  100% {
+    transform: translate3d(3%, -4%, 0) scale(1.06);
+  }
+}
