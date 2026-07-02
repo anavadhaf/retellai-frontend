@@ -9,8 +9,8 @@ import {
   FiRadio,
   FiRefreshCw,
   FiSliders,
-  FiVolume2,
-  FiVolumeX,
+  // FiVolume2,
+  // FiVolumeX,
   FiX,
 } from "react-icons/fi";
 import VoiceOrb from "../components/VoiceOrb";
@@ -393,13 +393,13 @@ function Home() {
                     disabled={!state.connected}
                     onClick={state.controls.toggleMute}
                   />
-                  <ControlButton
+                  {/* <ControlButton
                     label={state.speakerOn ? "Speaker on" : "Speaker off"}
                     icon={state.speakerOn ? <FiVolume2 /> : <FiVolumeX />}
                     active={state.speakerOn}
                     disabled={!state.connected}
                     onClick={state.controls.toggleSpeaker}
-                  />
+                  /> */}
                   <ControlButton
                     label="Settings"
                     icon={<FiSliders />}
