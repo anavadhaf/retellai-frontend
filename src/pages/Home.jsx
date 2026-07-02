@@ -385,8 +385,7 @@ function Home() {
                       Aufi
                     </p>
                     <p className="mx-auto max-w-xl text-sm leading-7 text-white/62 sm:text-base sm:leading-8">
-                      Your AI voice companion that listens, understands, and
-                      responds naturally. Start a conversation in seconds.
+                     Skip the search. Just ask. Get fast, reliable HR support whenever you need it.   
                     </p>
                   </div>
 

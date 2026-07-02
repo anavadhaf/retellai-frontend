@@ -19,6 +19,8 @@ const initialState = {
   error: defaultErrorState,
   backendConnected: false,
   transcript: "",
+  speakerOn: true,
+  audioRoute: "Speaker",
 };
 
 const initialMicModalState = {
@@ -28,6 +30,20 @@ const initialMicModalState = {
 
 function formatErrorMessage(error) {
   const message = error?.message || "Unknown error";
+
+  if (message.toLowerCase().includes("audio routing")) {
+    return {
+      title: "Audio routing unavailable",
+      message,
+    };
+  }
+
+  if (message.toLowerCase().includes("microphone control")) {
+    return {
+      title: "Microphone update failed",
+      message,
+    };
+  }
 
   if (message.toLowerCase().includes("microphone")) {
     return {
@@ -130,6 +146,10 @@ export function useRetell() {
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
   const microphonePermissionRef = useRef(initialState.microphonePermission);
+  const muteDesiredRef = useRef(false);
+  const muteSyncInFlightRef = useRef(false);
+  const speakerDesiredRef = useRef(initialState.speakerOn);
+  const speakerSyncInFlightRef = useRef(false);
 
   const setMicrophonePermission = useCallback((permission) => {
     microphonePermissionRef.current = permission;
@@ -237,6 +257,7 @@ export function useRetell() {
 
   const setError = useCallback((error) => {
     const formatted = formatErrorMessage(error);
+    console.error("WebRTC error", error);
 
     setState((current) => ({
       ...current,
@@ -248,11 +269,23 @@ export function useRetell() {
     }));
   }, []);
 
+  const showError = useCallback((error) => {
+    const formatted = formatErrorMessage(error);
+    console.error("WebRTC error", error);
+
+    setState((current) => ({
+      ...current,
+      error: formatted,
+    }));
+  }, []);
+
   const resetCallVisualState = useCallback(
     (nextStatus = "Idle") => {
       clearTimer();
       stopMicMonitor();
       setIsMuted(false);
+      muteDesiredRef.current = false;
+      speakerDesiredRef.current = initialState.speakerOn;
       setState((current) => ({
         ...current,
         connected: false,
@@ -261,15 +294,143 @@ export function useRetell() {
         duration: 0,
         agentSpeaking: false,
         userSpeaking: false,
+        speakerOn: initialState.speakerOn,
+        audioRoute: initialState.audioRoute,
       }));
     },
     [clearTimer, stopMicMonitor]
   );
 
+  const logMicrophoneState = useCallback((microphoneState) => {
+    console.log(
+      "Current microphone track enabled/disabled state",
+      microphoneState?.trackStates ?? []
+    );
+  }, []);
+
+  const syncMuteState = useCallback(async () => {
+    if (muteSyncInFlightRef.current || !retellService.getRoom()) {
+      return;
+    }
+
+    muteSyncInFlightRef.current = true;
+
+    try {
+      while (retellService.getRoom()) {
+        const targetMuted = muteDesiredRef.current;
+
+        try {
+          const microphoneState = await retellService.setMicrophoneEnabled(!targetMuted);
+          const actualMuted = !microphoneState.enabled;
+
+          setIsMuted(actualMuted);
+          setState((current) => ({
+            ...current,
+            userSpeaking: actualMuted ? false : current.userSpeaking,
+          }));
+
+          if (actualMuted) {
+            console.log("Microphone muted");
+          } else {
+            console.log("Microphone unmuted");
+          }
+
+          logMicrophoneState(microphoneState);
+        } catch (error) {
+          console.error("Mute/unmute error", error);
+          const microphoneState = retellService.getMicrophoneState();
+          const actualMuted = microphoneState.available
+            ? !microphoneState.enabled
+            : targetMuted;
+
+          setIsMuted(actualMuted);
+          muteDesiredRef.current = actualMuted;
+          logMicrophoneState(microphoneState);
+          showError(new Error(`Microphone control failed: ${error.message || "Unknown error"}`));
+          break;
+        }
+
+        if (muteDesiredRef.current === targetMuted) {
+          break;
+        }
+      }
+    } finally {
+      muteSyncInFlightRef.current = false;
+    }
+  }, [logMicrophoneState, showError]);
+
+  const logAudioRoutingSupport = useCallback(async () => {
+    try {
+      const support = await retellService.getAudioRoutingSupport();
+      console.log("Browser audio routing support", {
+        supported: support.supported,
+        canEnumerateDevices: support.canEnumerateDevices,
+        canSetElementSinkId: support.canSetElementSinkId,
+        canSetAudioContextSinkId: support.canSetAudioContextSinkId,
+        devices: support.devices.map((device) => ({
+          deviceId: device.deviceId,
+          label: device.label,
+        })),
+      });
+    } catch (error) {
+      console.error("Audio routing failures", error);
+    }
+  }, []);
+
+  const syncSpeakerState = useCallback(async () => {
+    if (speakerSyncInFlightRef.current || !retellService.getRoom()) {
+      return;
+    }
+
+    speakerSyncInFlightRef.current = true;
+
+    try {
+      while (retellService.getRoom()) {
+        const targetSpeakerOn = speakerDesiredRef.current;
+
+        try {
+          const result = await retellService.setSpeakerRoute(targetSpeakerOn);
+          const routeLabel = targetSpeakerOn ? "Speaker" : "Earpiece";
+
+          setState((current) => ({
+            ...current,
+            speakerOn: targetSpeakerOn,
+            audioRoute: result.device.label || routeLabel,
+          }));
+
+          if (targetSpeakerOn) {
+            console.log("Speaker enabled -> Routing audio to loud speaker");
+          } else {
+            console.log("Speaker disabled -> Routing audio to earpiece");
+          }
+
+          console.log("Current audio output device", result.device);
+        } catch (error) {
+          console.error("Audio routing failures", error);
+          setState((current) => ({
+            ...current,
+            speakerOn: !targetSpeakerOn,
+            audioRoute: !targetSpeakerOn ? "Speaker" : "Earpiece",
+          }));
+          speakerDesiredRef.current = !targetSpeakerOn;
+          showError(new Error(`Audio routing failed: ${error.message || "Unknown error"}`));
+          break;
+        }
+
+        if (speakerDesiredRef.current === targetSpeakerOn) {
+          break;
+        }
+      }
+    } finally {
+      speakerSyncInFlightRef.current = false;
+    }
+  }, [showError]);
+
   useEffect(() => {
     const unsubs = [
       retellService.on("call_started", () => {
         console.log("CALL_STARTED");
+        console.log("Call connected");
         setState((current) => ({
           ...current,
           connected: true,
@@ -277,9 +438,18 @@ export function useRetell() {
           status: "Connecting",
           error: defaultErrorState,
         }));
+        const microphoneState = retellService.getMicrophoneState();
+        const actualMuted = microphoneState.available
+          ? !microphoneState.enabled
+          : false;
+        muteDesiredRef.current = actualMuted;
+        setIsMuted(actualMuted);
+        logMicrophoneState(microphoneState);
+        void logAudioRoutingSupport();
       }),
       retellService.on("call_ready", () => {
         console.log("CONNECTION_ESTABLISHED");
+        console.log("Call connected");
         startTimer();
         setState((current) => ({
           ...current,
@@ -290,6 +460,7 @@ export function useRetell() {
       }),
       retellService.on("call_ended", () => {
         console.log("CALL_ENDED");
+        console.log("Call disconnected");
         manualHangupRef.current = false;
         resetCallVisualState("Disconnected");
       }),
@@ -341,7 +512,15 @@ export function useRetell() {
       stopMicMonitor();
       retellService.destroy();
     };
-  }, [clearTimer, resetCallVisualState, setError, startTimer, stopMicMonitor]);
+  }, [
+    clearTimer,
+    logAudioRoutingSupport,
+    logMicrophoneState,
+    resetCallVisualState,
+    setError,
+    startTimer,
+    stopMicMonitor,
+  ]);
 
   const getMicrophonePermissionState = useCallback(async () => {
     if (!navigator.permissions?.query) {
@@ -372,6 +551,7 @@ export function useRetell() {
       console.log("MIC_PERMISSION_REQUEST_START");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       console.log("MIC_PERMISSION_REQUEST_GRANTED");
+      console.log("Microphone permission granted");
       stream.getTracks().forEach((track) => track.stop());
 
       setMicModal(initialMicModalState);
@@ -380,6 +560,7 @@ export function useRetell() {
       return true;
     } catch (error) {
       console.log("MIC_PERMISSION_REQUEST_DENIED", error);
+      console.log("Microphone permission denied");
       setMicrophonePermission("denied");
       setMicModal({
         open: true,
@@ -421,12 +602,16 @@ export function useRetell() {
 
   const startConversation = useCallback(async () => {
     manualHangupRef.current = false;
+    speakerDesiredRef.current = true;
+    muteDesiredRef.current = false;
     setState((current) => ({
       ...current,
       connecting: true,
       status: "Connecting",
       error: defaultErrorState,
       transcript: "",
+      speakerOn: true,
+      audioRoute: "Speaker",
     }));
 
     try {
@@ -468,6 +653,7 @@ export function useRetell() {
   const stopConversation = useCallback(() => {
     manualHangupRef.current = true;
     console.log("CONNECTION_LOST");
+    console.log("Call disconnected");
     retellService.stopCall();
   }, []);
 
@@ -476,15 +662,36 @@ export function useRetell() {
       return;
     }
 
-    if (isMuted) {
-      retellService.unmute();
-      setIsMuted(false);
+    const nextMuted = !muteDesiredRef.current;
+    muteDesiredRef.current = nextMuted;
+    setIsMuted(nextMuted);
+
+    if (nextMuted) {
+      setState((current) => ({
+        ...current,
+        userSpeaking: false,
+      }));
+    }
+
+    void syncMuteState();
+  }, [state.connected, syncMuteState]);
+
+  const toggleSpeaker = useCallback(() => {
+    if (!state.connected) {
       return;
     }
 
-    retellService.mute();
-    setIsMuted(true);
-  }, [isMuted, state.connected]);
+    const nextSpeakerOn = !speakerDesiredRef.current;
+    speakerDesiredRef.current = nextSpeakerOn;
+
+    setState((current) => ({
+      ...current,
+      speakerOn: nextSpeakerOn,
+      audioRoute: nextSpeakerOn ? "Speaker" : "Earpiece",
+    }));
+
+    void syncSpeakerState();
+  }, [state.connected, syncSpeakerState]);
 
   const clearError = useCallback(() => {
     setState((current) => ({
@@ -501,6 +708,7 @@ export function useRetell() {
       startConversation,
       stopConversation,
       toggleMute,
+      toggleSpeaker,
       clearError,
       setMicModal,
     }),
@@ -512,6 +720,7 @@ export function useRetell() {
       startConversation,
       stopConversation,
       toggleMute,
+      toggleSpeaker,
     ]
   );
 
