@@ -370,7 +370,7 @@ function Home() {
 
                   <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                     <StatusChip label={state.status} accent />
-                    {state.isMuted ? <StatusChip label="Microphone Muted" /> : null}
+                    {/* {state.isMuted ? <StatusChip label="Microphone Muted" /> : null} */}
                   </div>
 
                   <div className="sr-only" aria-live="polite">
